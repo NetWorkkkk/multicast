@@ -1,0 +1,7 @@
+*.mjpeg
+*.Mjpeg
+__pycache__/
+*.pyc
+*.so
+
+.venv/
