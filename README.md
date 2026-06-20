@@ -98,11 +98,14 @@ the IP of the other side.
 ## Implementation Notes
 
 - Video is sent as MJPEG over RTP/UDP multicast.
-- Each MJPEG frame is fragmented into UDP-safe RTP packets.
+- Each MJPEG frame is split into an 8x8 grid of independently encoded JPEG
+  tiles, matching the packet-loss handling used by the RTSP reference source.
 - RTP `timestamp` identifies the video frame.
 - RTP `seqNum` is packet-global across the stream.
 - The last fragment of each frame uses the RTP marker bit.
-- If a fragment sequence gap is detected, the client drops the whole current
-  frame and waits for the next frame.
+- If a tile packet is lost, the client fills that tile from the cached tile at
+  the same position in the previous rendered frames.
+- If too many tiles are missing, the client drops the current frame and waits
+  for the next frame.
 - Complete frames are cached in a bounded queue before rendering.
 - Rendered frames are resized to fit the current client window.

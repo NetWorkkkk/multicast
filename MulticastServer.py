@@ -1,4 +1,5 @@
 import argparse
+from io import BytesIO
 import socket
 import threading
 import time
@@ -15,10 +16,13 @@ from MulticastCommon import (
 	DEFAULT_MCAST_PORT,
 	DEFAULT_TTL,
 	FRAME_INTERVAL_SECONDS,
+	GRID_M,
+	GRID_N,
+	NUM_TILES,
 	frame_timestamp,
 	make_multicast_rtp,
-	split_frame,
 )
+from PIL import Image
 from VideoStream import VideoStream
 
 
@@ -84,12 +88,12 @@ class MulticastVideoServer:
 
 			self.frame_number = self.stream.frameNbr()
 			timestamp = frame_timestamp(self.frame_number)
-			fragments = list(split_frame(frame))
+			tiles = list(self._split_frame_tiles(frame))
 			with self.lock:
-				for index, fragment in enumerate(fragments):
-					marker = 1 if index == len(fragments) - 1 else 0
+				for index, tile in tiles:
+					marker = 1 if index == NUM_TILES - 1 else 0
 					packet = make_multicast_rtp(
-						fragment,
+						tile,
 						self.packet_seq,
 						self.frame_number,
 						index,
@@ -99,6 +103,26 @@ class MulticastVideoServer:
 					self.sock.sendto(packet, self.destination)
 					self.packet_seq = (self.packet_seq + 1) & 0xFFFF
 			time.sleep(FRAME_INTERVAL_SECONDS)
+
+	def _split_frame_tiles(self, jpeg_bytes):
+		"""Split an MJPEG frame into GRID_N x GRID_M JPEG tiles."""
+		img = Image.open(BytesIO(jpeg_bytes)).convert("RGB")
+		width, height = img.size
+		tile_width = width // GRID_N
+		tile_height = height // GRID_M
+		for index in range(NUM_TILES):
+			col = index % GRID_N
+			row = index // GRID_N
+			box = (
+				col * tile_width,
+				row * tile_height,
+				(col + 1) * tile_width,
+				(row + 1) * tile_height,
+			)
+			tile = img.crop(box)
+			buffer = BytesIO()
+			tile.save(buffer, format="JPEG")
+			yield index, buffer.getvalue()
 
 
 class ServerApp:

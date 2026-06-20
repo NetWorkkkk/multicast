@@ -21,8 +21,11 @@ from MulticastCommon import (
 	DEFAULT_INTERFACE,
 	DEFAULT_MCAST_GROUP,
 	DEFAULT_MCAST_PORT,
+	GRID_N,
+	GRID_M,
 	MAX_DATAGRAM_SIZE,
-	MulticastFrameReassembler,
+	NUM_TILES,
+	MulticastTileReassembler,
 	monotonic_ms,
 )
 
@@ -41,7 +44,8 @@ class MulticastVideoClient:
 		self.render_tick_ms = 50
 		self.default_width = 640
 		self.last_packet_ms = 0
-		self.reassembler = MulticastFrameReassembler()
+		self.reassembler = MulticastTileReassembler()
+		self.last_tiles = {}
 
 		self.master.title("Multicast Video Client")
 		self.master.protocol("WM_DELETE_WINDOW", self.close)
@@ -158,12 +162,38 @@ class MulticastVideoClient:
 		result = self.reassembler.push(data)
 		if result is None:
 			return
-		frame_number, frame = result
-		try:
-			Image.open(io.BytesIO(frame)).verify()
-		except Exception:
+		frame_number, tiles = result
+		frame = self._compose_frame(tiles)
+		if frame is None:
 			return
 		self._enqueue_frame(frame_number, frame)
+
+	def _compose_frame(self, tiles):
+		decoded = {}
+		for index, tile in tiles.items():
+			try:
+				decoded[index] = Image.open(io.BytesIO(tile)).convert("RGB")
+			except Exception:
+				continue
+		if not decoded:
+			return None
+
+		sample = next(iter(decoded.values()))
+		tile_width, tile_height = sample.size
+		canvas = Image.new("RGB", (tile_width * GRID_N, tile_height * GRID_M), (0, 0, 0))
+		for index in range(NUM_TILES):
+			col = index % GRID_N
+			row = index // GRID_N
+			position = (col * tile_width, row * tile_height)
+			if index in decoded:
+				tile = decoded[index]
+				self.last_tiles[index] = tile
+			elif index in self.last_tiles:
+				tile = self.last_tiles[index]
+			else:
+				continue
+			canvas.paste(tile, position)
+		return canvas
 
 	def _enqueue_frame(self, frame_number, frame):
 		item = (frame_number, frame)
@@ -192,7 +222,10 @@ class MulticastVideoClient:
 
 	def _show_frame(self, frame):
 		try:
-			img = Image.open(io.BytesIO(frame)).convert("RGB")
+			if isinstance(frame, Image.Image):
+				img = frame.convert("RGB")
+			else:
+				img = Image.open(io.BytesIO(frame)).convert("RGB")
 		except Exception:
 			return
 		max_w = self.video_frame.winfo_width()
