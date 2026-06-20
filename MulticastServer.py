@@ -137,6 +137,39 @@ class ServerApp:
 			self.master.destroy()
 
 
+def run_cli(server):
+	print(f"Multicast server: {server.filename} -> {server.group}:{server.port}")
+	print("Commands: play, pause, status, quit")
+	try:
+		while not server.shutdown.is_set():
+			try:
+				command = input("server> ").strip().lower()
+			except EOFError:
+				break
+			except KeyboardInterrupt:
+				print()
+				break
+
+			if command in ("play", "p"):
+				server.play()
+				print("Streaming")
+			elif command in ("pause", "pa"):
+				server.pause()
+				print("Paused")
+			elif command in ("status", "s"):
+				state = "Streaming" if server.running.is_set() else "Paused"
+				print(f"{state} | frame {server.frame_number}")
+			elif command in ("quit", "exit", "q"):
+				break
+			elif command == "":
+				continue
+			else:
+				print("Unknown command. Use: play, pause, status, quit")
+	finally:
+		server.stop()
+		print("Server stopped")
+
+
 def parse_args():
 	parser = argparse.ArgumentParser(description="Multicast MJPEG/RTP video server")
 	parser.add_argument("filename", nargs="?", default="movie.Mjpeg")
@@ -145,17 +178,22 @@ def parse_args():
 	parser.add_argument("--interface", default=DEFAULT_INTERFACE)
 	parser.add_argument("--ttl", type=int, default=DEFAULT_TTL)
 	parser.add_argument("--autoplay", action="store_true")
+	parser.add_argument("--no-gui", action="store_true", help="run server in terminal mode")
 	return parser.parse_args()
 
 
 def main():
 	args = parse_args()
-	if Tk is None:
-		print("tkinter is not installed. Install python3-tk to run the server GUI.")
-		return
 	server = MulticastVideoServer(args.filename, args.group, args.port, args.interface, args.ttl)
 	if args.autoplay:
 		server.play()
+	if args.no_gui:
+		run_cli(server)
+		return
+	if Tk is None:
+		print("tkinter is not installed. Install python3-tk to run the server GUI, or use --no-gui.")
+		server.stop()
+		return
 	root = Tk()
 	ServerApp(root, server)
 	root.mainloop()

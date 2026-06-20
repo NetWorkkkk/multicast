@@ -49,6 +49,14 @@ Start the server:
 python MulticastServer.py movie.Mjpeg --group 239.255.42.99 --port 5004 --autoplay
 ```
 
+Run the server without GUI:
+
+```bash
+python MulticastServer.py movie.Mjpeg --group 239.255.42.99 --port 5004 --autoplay --no-gui
+```
+
+In no-GUI mode, type `play`, `pause`, `status`, or `quit` in the terminal.
+
 Start one or more clients in other terminals:
 
 ```bash
